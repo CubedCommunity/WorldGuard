@@ -34,6 +34,7 @@ import com.sk89q.worldguard.util.SpongeUtil;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.MultipleFacing;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowman;
@@ -379,8 +380,14 @@ public class WorldGuardBlockListener implements Listener {
         WorldConfiguration wcfg = getWorldConfig(event.getBlock().getWorld());
 
         if (cfg.activityHaltToggle) {
-            event.setCancelled(true);
-            return;
+            boolean isModified = wcfg instanceof BukkitWorldConfiguration && ((BukkitWorldConfiguration) wcfg).useModifiedActivityHalt;
+            
+            // Not modified -> cancel all physics
+            // Modified -> cancel all physics EXCEPT for directional blocks (like fences & glass panes)
+            if (!isModified || !(event.getBlock().getBlockData() instanceof MultipleFacing)) {
+                event.setCancelled(true);
+                return;
+            }
         }
 
         Material id = event.getBlock().getType();

@@ -71,6 +71,7 @@ public class BukkitWorldConfiguration extends YamlWorldConfiguration {
     public TargetMatcherSet allowAllInteract;
     public TargetMatcherSet blockUseAtFeet;
     public boolean usePaperEntityOrigin;
+    public boolean useModifiedActivityHalt;
     /* Configuration data end */
 
     /**
@@ -184,6 +185,7 @@ public class BukkitWorldConfiguration extends YamlWorldConfiguration {
         ropeLadders = getBoolean("physics.vine-like-rope-ladders", false);
         allowPortalAnywhere = getBoolean("physics.allow-portal-anywhere", false);
         preventWaterDamage = new HashSet<>(convertLegacyBlocks(getStringList("physics.disable-water-damage-blocks", null)));
+        useModifiedActivityHalt = getBoolean("physics.use-modified-activity-halt", true);
 
         blockTNTExplosions = getBoolean("ignition.block-tnt", false);
         blockTNTBlockDamage = getBoolean("ignition.block-tnt-block-damage", false);

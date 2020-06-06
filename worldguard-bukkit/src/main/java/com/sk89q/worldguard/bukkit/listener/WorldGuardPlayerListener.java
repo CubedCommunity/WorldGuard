@@ -324,6 +324,12 @@ public class WorldGuardPlayerListener implements Listener {
             event.setCancelled(true);
             return;
         }
+        
+        // block tripwires from activating if intensive activity is currently halted
+        if (block.getType() == Material.TRIPWIRE && cfg.activityHaltToggle) {
+            event.setCancelled(true);
+            return;
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
