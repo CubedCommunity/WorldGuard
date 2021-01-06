@@ -44,7 +44,6 @@ import com.sk89q.worldedit.util.formatting.text.format.TextDecoration;
 import com.sk89q.worldedit.world.World;
 import com.sk89q.worldguard.LocalPlayer;
 import com.sk89q.worldguard.WorldGuard;
-import com.sk89q.worldguard.commands.CommandUtils;
 import com.sk89q.worldguard.commands.task.RegionAdder;
 import com.sk89q.worldguard.commands.task.RegionLister;
 import com.sk89q.worldguard.commands.task.RegionManagerLoader;
@@ -645,7 +644,7 @@ public final class RegionCommands extends RegionCommandsBase {
         ProtectedRegion region;
         if (args.argsLength() == 0) { // Get region from where the player is
             if (!(sender instanceof LocalPlayer)) {
-                throw new CommandException("Please specify the region with /region info -w world_name region_name.");
+                throw new CommandException("Please specify the region with /region flags -w world_name region_name.");
             }
 
             region = checkRegionStandingIn(manager, (LocalPlayer) sender, true,
@@ -1126,9 +1125,11 @@ public final class RegionCommands extends RegionCommandsBase {
 
     @Command(aliases = {"toggle-bypass", "bypass"},
              desc = "Toggle region bypassing, effectively ignoring bypass permissions.")
-    @CommandPermissions({"worldguard.region.toggle-bypass"})
     public void toggleBypass(CommandContext args, Actor sender) throws CommandException {
         LocalPlayer player = worldGuard.checkPlayer(sender);
+        if (!player.hasPermission("worldguard.region.toggle-bypass")) {
+            throw new CommandPermissionsException();
+        }
         Session session = WorldGuard.getInstance().getPlatform().getSessionManager().get(player);
         if (session.hasBypassDisabled()) {
             session.setBypassDisabled(false);

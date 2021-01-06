@@ -73,8 +73,10 @@ import org.bukkit.entity.Firework;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.LivingEntity;
+import org.bukkit.entity.Mob;
 import org.bukkit.entity.Painting;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Tameable;
 import org.bukkit.entity.ThrownPotion;
 import org.bukkit.entity.minecart.HopperMinecart;
 import org.bukkit.event.Cancellable;
@@ -137,6 +139,7 @@ import org.bukkit.event.vehicle.VehicleDamageEvent;
 import org.bukkit.event.vehicle.VehicleDestroyEvent;
 import org.bukkit.event.world.StructureGrowEvent;
 import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.projectiles.ProjectileSource;
@@ -156,6 +159,17 @@ public class EventAbstractionListener extends AbstractListener {
     private final EventDebounce<BlockPistonRetractKey> pistonRetractDebounce = EventDebounce.create(5000);
     private final EventDebounce<BlockPistonExtendKey> pistonExtendDebounce = EventDebounce.create(5000);
 
+    private static final boolean HAS_SNAPSHOT_INVHOLDER;
+    static {
+        boolean temp;
+        try {
+            Inventory.class.getMethod("getHolder", boolean.class);
+            temp = true;
+        } catch (NoSuchMethodException e) {
+            temp = false;
+        }
+        HAS_SNAPSHOT_INVHOLDER = temp;
+    }
     /**
      * Construct the listener.
      *
@@ -230,7 +244,7 @@ public class EventAbstractionListener extends AbstractListener {
         boolean allowed = false;
 
         for (Block source : adjacent) {
-            if (source.getType() == Material.FIRE) {
+            if (Materials.isFire(source.getType())) {
                 found++;
                 if (Events.fireAndTestCancel(new BreakBlockEvent(event, create(source), target))) {
                     source.setType(Material.AIR);
@@ -309,18 +323,22 @@ public class EventAbstractionListener extends AbstractListener {
                 Events.fireToCancel(event, new PlaceBlockEvent(event, cause, block.getLocation(), toType));
 
                 if (entity instanceof FallingBlock) {
-                    if (event.isCancelled() && !wasCancelled) {
-                        FallingBlock fallingBlock = (FallingBlock) entity;
-                        final Material material = fallingBlock.getBlockData().getMaterial();
-                        if (!material.isItem()) return;
-                        ItemStack itemStack = new ItemStack(material, 1);
-                        Item item = block.getWorld().dropItem(fallingBlock.getLocation(), itemStack);
-                        item.setVelocity(new Vector());
-                        if (Events.fireAndTestCancel(new SpawnEntityEvent(event, create(block, entity), item))) {
-                            item.remove();
+                    try {
+                        if (event.isCancelled() && !wasCancelled) {
+                            FallingBlock fallingBlock = (FallingBlock) entity;
+                            if (!fallingBlock.getDropItem()) return;
+                            final Material material = fallingBlock.getBlockData().getMaterial();
+                            if (!material.isItem()) return;
+                            ItemStack itemStack = new ItemStack(material, 1);
+                            Item item = block.getWorld().dropItem(fallingBlock.getLocation(), itemStack);
+                            item.setVelocity(new Vector());
+                            if (Events.fireAndTestCancel(new SpawnEntityEvent(event, create(block, entity), item))) {
+                                item.remove();
+                            }
                         }
+                    } finally {
+                        Cause.untrackParentCause(entity);
                     }
-                    Cause.untrackParentCause(entity);
                 }
             }
         }
@@ -492,7 +510,7 @@ public class EventAbstractionListener extends AbstractListener {
                     }
 
                     // Special handling of putting out fires
-                    if (event.getAction() == Action.LEFT_CLICK_BLOCK && placed.getType() == Material.FIRE) {
+                    if (event.getAction() == Action.LEFT_CLICK_BLOCK && Materials.isFire(placed.getType())) {
                         if (Events.fireAndTestCancel(new BreakBlockEvent(event, create(event.getPlayer()), placed))) {
                             event.setUseInteractedBlock(Result.DENY);
                             break;
@@ -743,7 +761,7 @@ public class EventAbstractionListener extends AbstractListener {
                 event.setCancelled(true);
             }
         } else if (event.getState() == PlayerFishEvent.State.CAUGHT_FISH) {
-            if (Events.fireAndTestCancel(new SpawnEntityEvent(event, create(event.getPlayer(), event.getHook()), event.getHook().getLocation(), EntityType.EXPERIENCE_ORB))) {
+            if (event.getExpToDrop() > 0 && Events.fireAndTestCancel(new SpawnEntityEvent(event, create(event.getPlayer(), event.getHook()), event.getHook().getLocation(), EntityType.EXPERIENCE_ORB))) {
                 event.setExpToDrop(0);
             }
         } else if (event.getState() == PlayerFishEvent.State.CAUGHT_ENTITY) {
@@ -832,7 +850,11 @@ public class EventAbstractionListener extends AbstractListener {
             } else if (damager instanceof Creeper) {
                 eventToFire.getRelevantFlags().add(Flags.CREEPER_EXPLOSION);
             }
-            Events.fireToCancel(event, eventToFire);
+            if (Events.fireToCancel(event, eventToFire)) {
+                if (damager instanceof Tameable && damager instanceof Mob) {
+                    ((Mob) damager).setTarget(null);
+                }
+            }
 
             // Item use event with the item in hand
             // Older blacklist handler code used this, although it suffers from
@@ -913,21 +935,35 @@ public class EventAbstractionListener extends AbstractListener {
 
     @EventHandler(ignoreCancelled = true)
     public void onInventoryMoveItem(InventoryMoveItemEvent event) {
-        final InventoryHolder causeHolder = event.getInitiator().getHolder();
+        InventoryHolder causeHolder;
+        if (HAS_SNAPSHOT_INVHOLDER) {
+            causeHolder = event.getInitiator().getHolder(false);
+        } else {
+            causeHolder = event.getInitiator().getHolder();
+        }
 
+        WorldConfiguration wcfg = null;
         if (causeHolder instanceof Hopper
-                && getWorldConfig(BukkitAdapter.adapt((((Hopper) causeHolder).getWorld()))).ignoreHopperMoveEvents) {
+                && (wcfg = getWorldConfig(BukkitAdapter.adapt((((Hopper) causeHolder).getWorld())))).ignoreHopperMoveEvents) {
             return;
         } else if (causeHolder instanceof HopperMinecart
-                && getWorldConfig(BukkitAdapter.adapt((((HopperMinecart) causeHolder).getWorld()))).ignoreHopperMoveEvents) {
+                && (wcfg = getWorldConfig(BukkitAdapter.adapt((((HopperMinecart) causeHolder).getWorld())))).ignoreHopperMoveEvents) {
             return;
         }
 
         Entry entry;
 
         if ((entry = moveItemDebounce.tryDebounce(event)) != null) {
-            InventoryHolder sourceHolder = event.getSource().getHolder();
-            InventoryHolder targetHolder = event.getDestination().getHolder();
+            InventoryHolder sourceHolder;
+            InventoryHolder targetHolder;
+            if (HAS_SNAPSHOT_INVHOLDER) {
+                sourceHolder = event.getSource().getHolder(false);
+                targetHolder = event.getDestination().getHolder(false);
+            } else {
+                sourceHolder = event.getSource().getHolder();
+                targetHolder = event.getDestination().getHolder();
+            }
+
             Cause cause;
 
             if (causeHolder instanceof Entity) {
@@ -944,7 +980,7 @@ public class EventAbstractionListener extends AbstractListener {
 
             handleInventoryHolderUse(event, cause, targetHolder);
 
-            if (event.isCancelled() && causeHolder instanceof Hopper) {
+            if (event.isCancelled() && causeHolder instanceof Hopper && wcfg.breakDeniedHoppers) {
                 Bukkit.getScheduler().scheduleSyncDelayedTask(getPlugin(),
                         () -> ((Hopper) causeHolder).getBlock().breakNaturally());
             } else {
@@ -1052,7 +1088,6 @@ public class EventAbstractionListener extends AbstractListener {
     @EventHandler(ignoreCancelled = true)
     public void onTakeLecternBook(PlayerTakeLecternBookEvent event) {
         final UseBlockEvent useEvent = new UseBlockEvent(event, create(event.getPlayer()), event.getLectern().getBlock());
-        useEvent.getRelevantFlags().add(Flags.CHEST_ACCESS);
         Events.fireToCancel(event, useEvent);
     }
 

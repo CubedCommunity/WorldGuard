@@ -24,9 +24,10 @@ repositories {
 dependencies {
     "compile"(project(":worldguard-core"))
     //"compile"(project(":worldguard-libs:bukkit"))
-    "api"("com.destroystokyo.paper:paper-api:1.15-R0.1-SNAPSHOT")
-    "implementation"("io.papermc:paperlib:1.0.2")
+    "api"("com.destroystokyo.paper:paper-api:1.16.2-R0.1-SNAPSHOT")
+    "implementation"("io.papermc:paperlib:1.0.4")
     "api"("com.sk89q.worldedit:worldedit-bukkit:${Versions.WORLDEDIT}") { isTransitive = false }
+    "implementation"("com.google.guava:guava:${Versions.GUAVA}")
     "implementation"("com.sk89q:commandbook:2.3") { isTransitive = false }
     "implementation"("org.bstats:bstats-bukkit:1.7")
 }
@@ -39,22 +40,26 @@ tasks.named<Upload>("install") {
                     getProperty("groupId") == "com.destroystokyo.paper" && getProperty("artifactId") == "paper-api"
                 }
             }?.withGroovyBuilder {
-                setProperty("groupId", "org.bukkit")
-                setProperty("artifactId", "bukkit")
+                setProperty("groupId", "org.spigotmc")
+                setProperty("artifactId", "spigot-api")
             }
         }
     }
 }
 
 tasks.named<Copy>("processResources") {
+    val internalVersion = project.ext["internalVersion"]
+    inputs.property("internalVersion", internalVersion)
     filesMatching("plugin.yml") {
-        expand("internalVersion" to project.ext["internalVersion"])
+        expand("internalVersion" to internalVersion)
     }
 }
 
 tasks.named<Jar>("jar") {
+    val projectVersion = project.version
+    inputs.property("projectVersion", projectVersion)
     manifest {
-        attributes("Implementation-Version" to project.version)
+        attributes("Implementation-Version" to projectVersion)
     }
 }
 
@@ -64,7 +69,7 @@ tasks.named<ShadowJar>("shadowJar") {
             include(dependency("org.bstats:bstats-bukkit:1.7"))
         }
         relocate ("io.papermc.lib", "com.sk89q.worldguard.bukkit.paperlib") {
-            include(dependency("io.papermc:paperlib:1.0.2"))
+            include(dependency("io.papermc:paperlib:1.0.4"))
         }
     }
 }
