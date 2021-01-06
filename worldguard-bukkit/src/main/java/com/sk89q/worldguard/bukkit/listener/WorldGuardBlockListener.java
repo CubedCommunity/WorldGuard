@@ -35,6 +35,8 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.Bisected;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.MultipleFacing;
 import org.bukkit.block.data.Waterlogged;
 import org.bukkit.entity.Player;
@@ -373,6 +375,24 @@ public class WorldGuardBlockListener implements Listener {
             world.getBlockAt(x, y, z).setType(Material.AIR);
         }
     }
+    
+    // CUBED - modified activity halt
+    private boolean isModifiedHaltedPhysicsCancelled(BlockPhysicsEvent event, WorldConfiguration wcfg) {
+        boolean isModified = wcfg instanceof BukkitWorldConfiguration
+            && ((BukkitWorldConfiguration) wcfg).useModifiedActivityHalt;
+    
+        // Not modified -> cancel all physics
+        if (!isModified) {
+            return true;
+        }
+    
+        BlockData blockData = event.getBlock().getBlockData();
+    
+        // Modified -> cancel all physics EXCEPT for:
+        //             directional blocks (like fences & glass panes)
+        //             and bisected blocks (like doors)
+        return !(blockData instanceof MultipleFacing) && !(blockData instanceof Bisected);
+    }
 
     /*
      * Called when block physics occurs.
@@ -382,15 +402,9 @@ public class WorldGuardBlockListener implements Listener {
         ConfigurationManager cfg = WorldGuard.getInstance().getPlatform().getGlobalStateManager();
         WorldConfiguration wcfg = getWorldConfig(event.getBlock().getWorld());
 
-        if (cfg.activityHaltToggle) {
-            boolean isModified = wcfg instanceof BukkitWorldConfiguration && ((BukkitWorldConfiguration) wcfg).useModifiedActivityHalt;
-            
-            // Not modified -> cancel all physics
-            // Modified -> cancel all physics EXCEPT for directional blocks (like fences & glass panes)
-            if (!isModified || !(event.getBlock().getBlockData() instanceof MultipleFacing)) {
-                event.setCancelled(true);
-                return;
-            }
+        if (cfg.activityHaltToggle && isModifiedHaltedPhysicsCancelled(event, wcfg)) {
+            event.setCancelled(true);
+            return;
         }
 
         Material id = event.getBlock().getType();
